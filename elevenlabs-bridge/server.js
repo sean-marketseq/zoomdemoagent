@@ -37,16 +37,18 @@ fastify.get('/health', async (request, reply) => {
 // Initiate Call Endpoint
 fastify.post('/initiate-call', async (request, reply) => {
     const {
-        serverUrl,
         twilioAccountSid,
         twilioAuthToken,
         twilioPhoneNumber,
         elevenLabsApiKey,
         elevenLabsAgentId,
-        zoomDialIn,
-        meetingId,
-        passcode
+        zoomDialIn
     } = request.body || {};
+
+    let serverUrl = request.body?.serverUrl;
+    if (serverUrl && !serverUrl.startsWith('http')) {
+        serverUrl = `https://${serverUrl}`;
+    }
 
     if (!serverUrl || !twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber || !elevenLabsApiKey || !elevenLabsAgentId || !zoomDialIn) {
         return reply.code(400).send({ error: 'All fields (except Meeting ID/Passcode) are required' });
