@@ -73,17 +73,20 @@ fastify.post('/initiate-call', async (request, reply) => {
         const twilioClient = new Twilio(twilioAccountSid, twilioAuthToken);
 
         // Construct sendDigits string for Zoom
-        // If meetingId/passcode are provided, wait and enter them. Otherwise just wait.
-        let sendDigits = 'wwww';
+        // Format: ww (wait) + meetingId# + wwww (wait) + *passcode#
+        // Based on Zoom's "one tap mobile" format
+        let sendDigits = 'ww'; // Initial wait for Zoom IVR
         if (meetingId) {
             sendDigits += `${meetingId}#`;
             if (passcode) {
-                sendDigits += `wwww${passcode}#`;
+                sendDigits += `wwww*${passcode}#`; // Note the * prefix for passcode
             } else {
-                // If no passcode, usually just # or wait
-                sendDigits += `wwww#`;
+                sendDigits += `wwww#`; // Just # if no passcode
             }
         }
+
+        request.log.info(`SendDigits sequence: ${sendDigits}`);
+
 
         const call = await twilioClient.calls.create({
             url: `${serverUrl}/call/twiml?sessionId=${sessionId}`,
