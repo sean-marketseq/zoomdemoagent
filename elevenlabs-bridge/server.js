@@ -234,6 +234,11 @@ fastify.register(async (fastify) => {
         });
 
         // Handle messages from Twilio
+        if (!connection.socket) {
+            fastify.log.error('Connection socket is undefined');
+            return;
+        }
+
         connection.socket.on('message', (message) => {
             try {
                 const data = JSON.parse(message);
