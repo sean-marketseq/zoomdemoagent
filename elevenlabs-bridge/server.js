@@ -1,0 +1,248 @@
+import Fastify from 'fastify';
+import fastifyFormBody from '@fastify/formbody';
+import fastifyWs from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
+import WebSocket from 'ws';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import Twilio from 'twilio';
+import { v4 as uuidv4 } from 'uuid';
+
+dotenv.config();
+
+const fastify = Fastify({ logger: true });
+
+// In-memory store for call sessions
+// Map<sessionId, { twilioAccountSid, twilioAuthToken, elevenLabsApiKey, elevenLabsAgentId, serverUrl }>
+const sessionStore = new Map();
+
+// Register plugins
+fastify.register(fastifyFormBody);
+fastify.register(fastifyWs);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+fastify.register(fastifyStatic, {
+    root: path.join(__dirname, 'public'),
+    prefix: '/',
+});
+
+// Root route for health check
+fastify.get('/health', async (request, reply) => {
+    return { status: 'ok', message: 'ElevenLabs Zoom Bridge Server is running' };
+});
+
+// Initiate Call Endpoint
+fastify.post('/initiate-call', async (request, reply) => {
+    const {
+        serverUrl,
+        twilioAccountSid,
+        twilioAuthToken,
+        twilioPhoneNumber,
+        elevenLabsApiKey,
+        elevenLabsAgentId,
+        zoomDialIn,
+        meetingId,
+        passcode
+    } = request.body || {};
+
+    if (!serverUrl || !twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber || !elevenLabsApiKey || !elevenLabsAgentId || !zoomDialIn || !meetingId || !passcode) {
+        return reply.code(400).send({ error: 'All fields are required' });
+    }
+
+    // Create a session ID to track this call's configuration
+    const sessionId = uuidv4();
+    sessionStore.set(sessionId, {
+        twilioAccountSid,
+        twilioAuthToken,
+        elevenLabsApiKey,
+        elevenLabsAgentId,
+        serverUrl
+    });
+
+    // Clean up session after 1 hour to prevent memory leaks
+    setTimeout(() => sessionStore.delete(sessionId), 3600000);
+
+    const twilioClient = new Twilio(twilioAccountSid, twilioAuthToken);
+
+    // Construct sendDigits string for Zoom
+    const sendDigits = `wwww${meetingId}#wwww${passcode}#`;
+
+    try {
+        const call = await twilioClient.calls.create({
+            url: `${serverUrl}/call/twiml?sessionId=${sessionId}`,
+            to: zoomDialIn,
+            from: twilioPhoneNumber,
+            sendDigits: sendDigits
+        });
+
+        request.log.info(`Call initiated: ${call.sid} (Session: ${sessionId})`);
+        return { success: true, callSid: call.sid, sessionId };
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send({ error: 'Failed to initiate call', details: error.message });
+    }
+});
+
+// TwiML Endpoint
+fastify.post('/call/twiml', async (request, reply) => {
+    const sessionId = request.query.sessionId;
+    const session = sessionStore.get(sessionId);
+
+    if (!session) {
+        request.log.error(`Session not found for TwiML: ${sessionId}`);
+        return reply.code(404).send('Session not found');
+    }
+
+    const { serverUrl } = session;
+    const twiml = new Twilio.twiml.VoiceResponse();
+
+    const connect = twiml.connect();
+    const stream = connect.stream({
+        url: `${serverUrl.replace(/^https/, 'wss')}/media-stream?sessionId=${sessionId}`
+    });
+
+    reply.type('text/xml');
+    return twiml.toString();
+});
+
+// Call Status Callback Endpoint
+fastify.post('/call/status', async (request, reply) => {
+    const callStatus = request.body.CallStatus;
+    const callSid = request.body.CallSid;
+    request.log.info(`Call Status Update: ${callSid} is ${callStatus}`);
+    return { status: 'ok' };
+});
+
+// WebSocket Media Stream Endpoint
+fastify.register(async (fastify) => {
+    fastify.get('/media-stream', { websocket: true }, (connection, req) => {
+        const sessionId = req.query.sessionId;
+        const session = sessionStore.get(sessionId);
+
+        if (!session) {
+            fastify.log.error(`Session not found for WebSocket: ${sessionId}`);
+            connection.socket.close();
+            return;
+        }
+
+        const { elevenLabsApiKey, elevenLabsAgentId } = session;
+
+        fastify.log.info(`Twilio media stream connected (Session: ${sessionId})`);
+
+        let streamSid = null;
+        let elevenLabsWs = null;
+        let isElevenLabsConnected = false;
+
+        // Connect to ElevenLabs
+        const elevenLabsUrl = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${elevenLabsAgentId}`;
+        elevenLabsWs = new WebSocket(elevenLabsUrl, {
+            headers: {
+                'xi-api-key': elevenLabsApiKey
+            }
+        });
+
+        elevenLabsWs.on('open', () => {
+            fastify.log.info('Connected to ElevenLabs');
+            isElevenLabsConnected = true;
+        });
+
+        elevenLabsWs.on('message', (data) => {
+            try {
+                const message = JSON.parse(data);
+                handleElevenLabsMessage(message, connection, streamSid);
+            } catch (error) {
+                fastify.log.error('Error parsing ElevenLabs message:', error);
+            }
+        });
+
+        elevenLabsWs.on('error', (error) => {
+            fastify.log.error('ElevenLabs WebSocket error:', error);
+        });
+
+        elevenLabsWs.on('close', (code, reason) => {
+            fastify.log.info(`ElevenLabs disconnected. Code: ${code}, Reason: ${reason}`);
+            isElevenLabsConnected = false;
+        });
+
+        // Handle messages from Twilio
+        connection.socket.on('message', (message) => {
+            try {
+                const data = JSON.parse(message);
+
+                switch (data.event) {
+                    case 'start':
+                        streamSid = data.start.streamSid;
+                        fastify.log.info(`Stream started: ${streamSid}`);
+                        break;
+
+                    case 'media':
+                        if (isElevenLabsConnected && elevenLabsWs.readyState === WebSocket.OPEN) {
+                            const audioPayload = {
+                                user_audio_chunk: data.media.payload
+                            };
+                            elevenLabsWs.send(JSON.stringify(audioPayload));
+                        }
+                        break;
+
+                    case 'stop':
+                        fastify.log.info(`Stream stopped: ${streamSid}`);
+                        if (elevenLabsWs.readyState === WebSocket.OPEN) {
+                            elevenLabsWs.close();
+                        }
+                        break;
+                }
+            } catch (error) {
+                fastify.log.error('Error parsing Twilio message:', error);
+            }
+        });
+
+        connection.socket.on('close', () => {
+            fastify.log.info('Twilio media stream disconnected');
+            if (elevenLabsWs && elevenLabsWs.readyState === WebSocket.OPEN) {
+                elevenLabsWs.close();
+            }
+        });
+    });
+});
+
+function handleElevenLabsMessage(message, twilioConnection, streamSid) {
+    switch (message.type) {
+        case 'conversation_initiation_metadata':
+            console.log('ElevenLabs conversation initiated');
+            break;
+
+        case 'audio':
+            if (message.audio_event?.audio_base_64) {
+                const audioData = {
+                    event: 'media',
+                    streamSid: streamSid,
+                    media: {
+                        payload: message.audio_event.audio_base_64
+                    }
+                };
+                twilioConnection.socket.send(JSON.stringify(audioData));
+            }
+            break;
+
+        case 'ping':
+            if (message.ping_event?.event_id) {
+                // Pong if needed
+            }
+            break;
+    }
+}
+
+// Start server
+const start = async () => {
+    try {
+        await fastify.listen({ port: process.env.PORT || 3000, host: '0.0.0.0' });
+    } catch (err) {
+        fastify.log.error(err);
+        process.exit(1);
+    }
+};
+
+start();
