@@ -117,8 +117,7 @@
         <div class="section-title">Server Configuration</div>
         <div class="form-group">
             <label for="serverUrl">Server URL</label>
-            <input type="text" id="serverUrl" placeholder="https://your-app.up.railway.app"
-                value="https://googletts-production-d251.up.railway.app" required>
+            <input type="text" id="serverUrl" placeholder="https://your-app.up.railway.app" required>
             <div class="note">The public HTTPS URL of this server (Railway)</div>
         </div>
 
@@ -139,27 +138,25 @@
         <div class="section-title">ElevenLabs Credentials</div>
         <div class="form-group">
             <label for="elevenLabsApiKey">API Key</label>
-            <input type="password" id="elevenLabsApiKey" placeholder="xi-..."
-                value="sk_3ccfa57dded28b738fb669d4bf65613b40ebd1a7c5fc7e9d" required>
+            <input type="password" id="elevenLabsApiKey" placeholder="xi-..." required>
         </div>
         <div class="form-group">
             <label for="elevenLabsAgentId">Agent ID</label>
-            <input type="text" id="elevenLabsAgentId" placeholder="Agent ID" value="agent_3401kabkr9zvfee8tjzp1t2cwdge"
-                required>
+            <input type="text" id="elevenLabsAgentId" placeholder="Agent ID" required>
         </div>
 
         <div class="section-title">Zoom Meeting</div>
         <div class="form-group">
             <label for="zoomDialIn">Dial-In Number</label>
-            <input type="text" id="zoomDialIn" placeholder="+16465588656" value="+19292056099" required>
+            <input type="text" id="zoomDialIn" placeholder="+16465588656" required>
         </div>
         <div class="form-group">
             <label for="meetingId">Meeting ID</label>
-            <input type="text" id="meetingId" placeholder="Meeting ID" required>
+            <input type="text" id="meetingId" placeholder="Meeting ID">
         </div>
         <div class="form-group">
             <label for="passcode">Passcode</label>
-            <input type="text" id="passcode" placeholder="Passcode" required>
+            <input type="text" id="passcode" placeholder="Passcode">
         </div>
 
         <button id="connectBtn">Connect Agent</button>
@@ -187,7 +184,8 @@
 
             fields.forEach(id => {
                 const val = document.getElementById(id).value.trim();
-                if (!val) missing = true;
+                // Meeting ID and Passcode are optional (can be entered manually on phone)
+                if (!val && id !== 'meetingId' && id !== 'passcode') missing = true;
                 data[id] = val;
                 // Save to localStorage
                 localStorage.setItem(id, val);
