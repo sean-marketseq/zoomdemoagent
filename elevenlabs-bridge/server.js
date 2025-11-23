@@ -152,12 +152,19 @@ fastify.post('/call/twiml', async (request, reply) => {
     }
 
     const { serverUrl } = session;
+
+    // Construct WebSocket URL
+    const wsUrl = `${serverUrl.replace(/^https/, 'wss')}/media-stream?sessionId=${sessionId}`;
+    request.log.info(`TwiML WebSocket URL: ${wsUrl}`);
+
     const twiml = new Twilio.twiml.VoiceResponse();
 
     const connect = twiml.connect();
     const stream = connect.stream({
-        url: `${serverUrl.replace(/^https/, 'wss')}/media-stream?sessionId=${sessionId}`
+        url: wsUrl
     });
+
+    request.log.info(`TwiML Response: ${twiml.toString()}`);
 
     reply.type('text/xml');
     return twiml.toString();
