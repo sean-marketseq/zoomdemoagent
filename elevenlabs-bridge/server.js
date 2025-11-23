@@ -190,7 +190,7 @@ fastify.register(async (fastify) => {
 
         if (!session) {
             fastify.log.error(`Session not found for WebSocket: ${sessionId}`);
-            connection.socket.close();
+            connection.end();
             return;
         }
 
@@ -234,12 +234,7 @@ fastify.register(async (fastify) => {
         });
 
         // Handle messages from Twilio
-        if (!connection.socket) {
-            fastify.log.error('Connection socket is undefined');
-            return;
-        }
-
-        connection.socket.on('message', (message) => {
+        connection.on('message', (message) => {
             try {
                 const data = JSON.parse(message);
 
@@ -270,7 +265,7 @@ fastify.register(async (fastify) => {
             }
         });
 
-        connection.socket.on('close', () => {
+        connection.on('close', () => {
             fastify.log.info('Twilio media stream disconnected');
             if (elevenLabsWs && elevenLabsWs.readyState === WebSocket.OPEN) {
                 elevenLabsWs.close();
@@ -294,7 +289,7 @@ function handleElevenLabsMessage(message, twilioConnection, streamSid) {
                         payload: message.audio_event.audio_base_64
                     }
                 };
-                twilioConnection.socket.send(JSON.stringify(audioData));
+                twilioConnection.send(JSON.stringify(audioData));
             }
             break;
 
