@@ -174,11 +174,38 @@ fastify.post('/call/status', async (request, reply) => {
 // WebSocket Media Stream Endpoint
 fastify.register(async (fastify) => {
     fastify.get('/media-stream', { websocket: true }, (connection, req) => {
-        // Parse sessionId from URL query string
-        const url = new URL(req.url, `http://${req.headers.host}`);
-        const sessionId = url.searchParams.get('sessionId');
+        // Log everything for debugging
+        fastify.log.info(`WebSocket connection - Full URL: ${req.url}`);
+        fastify.log.info(`WebSocket connection - Headers: ${JSON.stringify(req.headers)}`);
 
-        fastify.log.info(`WebSocket connection attempt with sessionId: ${sessionId}`);
+        // Try multiple methods to get sessionId
+        let sessionId = null;
+
+        // Method 1: Parse from URL
+        try {
+            const url = new URL(req.url, `http://${req.headers.host}`);
+            sessionId = url.searchParams.get('sessionId');
+            fastify.log.info(`Method 1 (URL parse): ${sessionId}`);
+        } catch (e) {
+            fastify.log.error(`URL parse failed: ${e.message}`);
+        }
+
+        // Method 2: Check req.query
+        if (!sessionId && req.query) {
+            sessionId = req.query.sessionId;
+            fastify.log.info(`Method 2 (req.query): ${sessionId}`);
+        }
+
+        // Method 3: Manual regex parse
+        if (!sessionId) {
+            const match = req.url.match(/sessionId=([^&]+)/);
+            if (match) {
+                sessionId = match[1];
+                fastify.log.info(`Method 3 (regex): ${sessionId}`);
+            }
+        }
+
+        fastify.log.info(`Final sessionId: ${sessionId}`);
 
         const session = sessionStore.get(sessionId);
 
