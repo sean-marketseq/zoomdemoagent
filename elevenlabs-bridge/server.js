@@ -174,7 +174,12 @@ fastify.post('/call/status', async (request, reply) => {
 // WebSocket Media Stream Endpoint
 fastify.register(async (fastify) => {
     fastify.get('/media-stream', { websocket: true }, (connection, req) => {
-        const sessionId = req.query.sessionId;
+        // Parse sessionId from URL query string
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const sessionId = url.searchParams.get('sessionId');
+
+        fastify.log.info(`WebSocket connection attempt with sessionId: ${sessionId}`);
+
         const session = sessionStore.get(sessionId);
 
         if (!session) {
