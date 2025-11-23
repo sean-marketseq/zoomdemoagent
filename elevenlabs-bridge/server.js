@@ -42,7 +42,9 @@ fastify.post('/initiate-call', async (request, reply) => {
         twilioPhoneNumber,
         elevenLabsApiKey,
         elevenLabsAgentId,
-        zoomDialIn
+        zoomDialIn,
+        meetingId,
+        passcode
     } = request.body || {};
 
     let serverUrl = request.body?.serverUrl;
