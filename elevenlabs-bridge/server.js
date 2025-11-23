@@ -48,8 +48,8 @@ fastify.post('/initiate-call', async (request, reply) => {
         passcode
     } = request.body || {};
 
-    if (!serverUrl || !twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber || !elevenLabsApiKey || !elevenLabsAgentId || !zoomDialIn || !meetingId || !passcode) {
-        return reply.code(400).send({ error: 'All fields are required' });
+    if (!serverUrl || !twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber || !elevenLabsApiKey || !elevenLabsAgentId || !zoomDialIn) {
+        return reply.code(400).send({ error: 'All fields (except Meeting ID/Passcode) are required' });
     }
 
     // Create a session ID to track this call's configuration
@@ -68,7 +68,17 @@ fastify.post('/initiate-call', async (request, reply) => {
     const twilioClient = new Twilio(twilioAccountSid, twilioAuthToken);
 
     // Construct sendDigits string for Zoom
-    const sendDigits = `wwww${meetingId}#wwww${passcode}#`;
+    // If meetingId/passcode are provided, wait and enter them. Otherwise just wait.
+    let sendDigits = 'wwww';
+    if (meetingId) {
+        sendDigits += `${meetingId}#`;
+        if (passcode) {
+            sendDigits += `wwww${passcode}#`;
+        } else {
+            // If no passcode, usually just # or wait
+            sendDigits += `wwww#`;
+        }
+    }
 
     try {
         const call = await twilioClient.calls.create({
