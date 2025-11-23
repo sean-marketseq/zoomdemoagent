@@ -153,8 +153,8 @@ fastify.post('/call/twiml', async (request, reply) => {
 
     const { serverUrl } = session;
 
-    // Construct WebSocket URL
-    const wsUrl = `${serverUrl.replace(/^https/, 'wss')}/media-stream?sessionId=${sessionId}`;
+    // Construct WebSocket URL with sessionId in path (not query param)
+    const wsUrl = `${serverUrl.replace(/^https/, 'wss')}/media-stream/${sessionId}`;
     request.log.info(`TwiML WebSocket URL: ${wsUrl}`);
 
     const twiml = new Twilio.twiml.VoiceResponse();
@@ -180,39 +180,11 @@ fastify.post('/call/status', async (request, reply) => {
 
 // WebSocket Media Stream Endpoint
 fastify.register(async (fastify) => {
-    fastify.get('/media-stream', { websocket: true }, (connection, req) => {
-        // Log everything for debugging
-        fastify.log.info(`WebSocket connection - Full URL: ${req.url}`);
-        fastify.log.info(`WebSocket connection - Headers: ${JSON.stringify(req.headers)}`);
+    fastify.get('/media-stream/:sessionId', { websocket: true }, (connection, req) => {
+        // Extract sessionId from path parameter
+        const sessionId = req.params.sessionId;
 
-        // Try multiple methods to get sessionId
-        let sessionId = null;
-
-        // Method 1: Parse from URL
-        try {
-            const url = new URL(req.url, `http://${req.headers.host}`);
-            sessionId = url.searchParams.get('sessionId');
-            fastify.log.info(`Method 1 (URL parse): ${sessionId}`);
-        } catch (e) {
-            fastify.log.error(`URL parse failed: ${e.message}`);
-        }
-
-        // Method 2: Check req.query
-        if (!sessionId && req.query) {
-            sessionId = req.query.sessionId;
-            fastify.log.info(`Method 2 (req.query): ${sessionId}`);
-        }
-
-        // Method 3: Manual regex parse
-        if (!sessionId) {
-            const match = req.url.match(/sessionId=([^&]+)/);
-            if (match) {
-                sessionId = match[1];
-                fastify.log.info(`Method 3 (regex): ${sessionId}`);
-            }
-        }
-
-        fastify.log.info(`Final sessionId: ${sessionId}`);
+        fastify.log.info(`WebSocket connection with sessionId from path: ${sessionId}`);
 
         const session = sessionStore.get(sessionId);
 
