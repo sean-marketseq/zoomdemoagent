@@ -159,13 +159,19 @@
             <input type="text" id="passcode" placeholder="Passcode">
         </div>
 
-        <button id="connectBtn">Connect Agent</button>
+        <div style="display: flex; gap: 10px;">
+            <button id="connectBtn" style="flex: 1;">Connect Agent</button>
+            <button id="hangupBtn" style="flex: 1; background: #dc3545;" disabled>Hang Up</button>
+        </div>
         <div id="status"></div>
     </div>
 
     <script>
         const connectBtn = document.getElementById('connectBtn');
+        const hangupBtn = document.getElementById('hangupBtn');
         const statusDiv = document.getElementById('status');
+
+        let currentCallSid = null;
 
         // Load saved values from localStorage
         const fields = [
@@ -209,12 +215,41 @@
                 const resData = await response.json();
 
                 if (response.ok) {
+                    currentCallSid = resData.callSid;
+                    hangupBtn.disabled = false;
                     showStatus(`Call initiated! SID: ${resData.callSid}`, 'success');
                 } else {
                     // Show detailed error if available
                     const errorMsg = resData.details || resData.error || 'Failed to initiate call';
                     const code = resData.code ? ` (Code: ${resData.code})` : '';
                     showStatus(`Error: ${errorMsg}${code}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`Network Error: ${error.message}`, 'error');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        hangupBtn.addEventListener('click', async () => {
+            if (!currentCallSid) return;
+
+            setLoading(true);
+            try {
+                const response = await fetch('/hangup-call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ callSid: currentCallSid })
+                });
+
+                const resData = await response.json();
+
+                if (response.ok) {
+                    showStatus('Call ended successfully', 'success');
+                    currentCallSid = null;
+                    hangupBtn.disabled = true;
+                } else {
+                    showStatus(`Error: ${resData.error || 'Failed to hang up'}`, 'error');
                 }
             } catch (error) {
                 showStatus(`Network Error: ${error.message}`, 'error');

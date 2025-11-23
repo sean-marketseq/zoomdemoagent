@@ -105,6 +105,42 @@ fastify.post('/initiate-call', async (request, reply) => {
     }
 });
 
+// Hangup Call Endpoint
+fastify.post('/hangup-call', async (request, reply) => {
+    const { callSid } = request.body || {};
+
+    if (!callSid) {
+        return reply.code(400).send({ error: 'Call SID is required' });
+    }
+
+    // Find the session for this call (we'll need to store callSid -> sessionId mapping)
+    // For now, we'll try to use the most recent session's credentials
+    // This is a limitation - ideally we'd track callSid -> sessionId
+    let sessionData = null;
+    for (const [sid, data] of sessionStore.entries()) {
+        sessionData = data;
+        break; // Use the first (most recent) session
+    }
+
+    if (!sessionData) {
+        return reply.code(404).send({ error: 'No active session found' });
+    }
+
+    try {
+        const twilioClient = new Twilio(sessionData.twilioAccountSid, sessionData.twilioAuthToken);
+        await twilioClient.calls(callSid).update({ status: 'completed' });
+
+        request.log.info(`Call ${callSid} terminated`);
+        return { success: true, message: 'Call ended' };
+    } catch (error) {
+        request.log.error(error);
+        return reply.code(500).send({
+            error: 'Failed to hang up call',
+            details: error.message
+        });
+    }
+});
+
 // TwiML Endpoint
 fastify.post('/call/twiml', async (request, reply) => {
     const sessionId = request.query.sessionId;
