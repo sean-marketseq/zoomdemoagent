@@ -67,22 +67,22 @@ fastify.post('/initiate-call', async (request, reply) => {
     // Clean up session after 1 hour to prevent memory leaks
     setTimeout(() => sessionStore.delete(sessionId), 3600000);
 
-    const twilioClient = new Twilio(twilioAccountSid, twilioAuthToken);
-
-    // Construct sendDigits string for Zoom
-    // If meetingId/passcode are provided, wait and enter them. Otherwise just wait.
-    let sendDigits = 'wwww';
-    if (meetingId) {
-        sendDigits += `${meetingId}#`;
-        if (passcode) {
-            sendDigits += `wwww${passcode}#`;
-        } else {
-            // If no passcode, usually just # or wait
-            sendDigits += `wwww#`;
-        }
-    }
-
     try {
+        const twilioClient = new Twilio(twilioAccountSid, twilioAuthToken);
+
+        // Construct sendDigits string for Zoom
+        // If meetingId/passcode are provided, wait and enter them. Otherwise just wait.
+        let sendDigits = 'wwww';
+        if (meetingId) {
+            sendDigits += `${meetingId}#`;
+            if (passcode) {
+                sendDigits += `wwww${passcode}#`;
+            } else {
+                // If no passcode, usually just # or wait
+                sendDigits += `wwww#`;
+            }
+        }
+
         const call = await twilioClient.calls.create({
             url: `${serverUrl}/call/twiml?sessionId=${sessionId}`,
             to: zoomDialIn,
