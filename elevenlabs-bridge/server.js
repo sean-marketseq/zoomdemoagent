@@ -94,7 +94,12 @@ fastify.post('/initiate-call', async (request, reply) => {
         return { success: true, callSid: call.sid, sessionId };
     } catch (error) {
         request.log.error(error);
-        return reply.code(500).send({ error: 'Failed to initiate call', details: error.message });
+        return reply.code(500).send({
+            error: 'Failed to initiate call',
+            details: error.message,
+            code: error.code, // Twilio error code
+            moreInfo: error.moreInfo // Twilio link
+        });
     }
 });
 
