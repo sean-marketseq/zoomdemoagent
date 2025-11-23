@@ -211,7 +211,10 @@
                 if (response.ok) {
                     showStatus(`Call initiated! SID: ${resData.callSid}`, 'success');
                 } else {
-                    showStatus(`Error: ${resData.error || 'Failed to initiate call'}`, 'error');
+                    // Show detailed error if available
+                    const errorMsg = resData.details || resData.error || 'Failed to initiate call';
+                    const code = resData.code ? ` (Code: ${resData.code})` : '';
+                    showStatus(`Error: ${errorMsg}${code}`, 'error');
                 }
             } catch (error) {
                 showStatus(`Network Error: ${error.message}`, 'error');
